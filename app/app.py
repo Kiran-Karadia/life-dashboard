@@ -1,8 +1,101 @@
+import base64
 import datetime
-from flask import Flask, abort, render_template
+from requests import Request, Response, get, post
+from flask import Flask, request, abort, render_template, redirect
 from markupsafe import escape
 
+BASE_ENDPOINT = "https://accounts.spotify.com"
+CLIENT_ID = "715ce3e1c15349e189c2d999b7abfa48"
+CLIENT_SECRET = "0d14d2ca2f1e40dfac3c602868e96baa"
+REDIRECT_URL = "http://localhost:5000/callback"
+BASE_API = "https://api.spotify.com"
 app = Flask(__name__)
+
+def request_user_auth():
+    query_params = {
+        "client_id": CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": REDIRECT_URL,
+        "state": "QWERTY",
+        "scope": "user-read-playback-state"
+    }
+    url = Request(
+        method="GET",
+        url=f"{BASE_ENDPOINT}/authorize",
+        params=query_params
+    ).prepare().url
+
+    return url
+
+def get_token(auth_code):
+    request = post(
+        url=f"{BASE_ENDPOINT}/api/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": REDIRECT_URL
+        },
+        headers={
+            "Authorization": encode_auth(),
+            "content-type": "application/x-www-form-urlencoded"
+        }
+    )
+
+    return request.json()
+
+def get_playback_state(token):
+    request = get(
+        url=f"{BASE_API}/v1/me/player",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    return request.json()
+
+def refersh_access_token(refresh_token):
+    request = post(
+        url=f"{BASE_ENDPOINT}/api/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token
+        },
+        headers={
+            "content-type": "application/x-www-form-urlencoded",
+            "Authorization": encode_auth()
+        }
+    )
+
+    return request.json()
+
+def encode_auth():
+    return f"Basic {base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()}"
+
+
+class Auth:
+    def __init__(self):
+        self.token = None
+
+    def set_token(self, token, refresh_token):
+        self.token = token
+        self.refresh_token = refresh_token
+
+auth = Auth()
+
+@app.route("/callback", methods=["GET"])
+def callback():
+    code = request.args.get("code")
+    state = request.args.get("state")
+
+    auth_json = get_token(code)
+    access_token = auth_json["access_token"]
+    refresh_token = auth_json["refresh_token"]
+
+    auth.set_token(access_token, refresh_token)
+    
+
+    
+    return redirect('home')
 
 
 @app.route("/")
@@ -12,7 +105,7 @@ def hello():
 
 @app.route("/about")
 def about():
-    return render_template("about.html")
+    return redirect(request_user_auth())
 
 @app.route("/capitalise/<word>")
 def capitalise(word: str):
@@ -36,11 +129,5 @@ def time():
 
 @app.route("/comments")
 def comments():
-    comments = [
-        "First",
-        "Second",
-        "Third",
-        "Fourth",
-        "Fifth"
-    ]
-    return render_template("comments.html", comments=comments)
+    return get_playback_state(auth.refresh_token)
+
