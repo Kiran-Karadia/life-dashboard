@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block header %}
+  <h1>{% block title %}Spotify API{% endblock %}</h1>
+{% endblock %}
+
+{% block content %}
+<h2>Button Pressed: {{ ButtonPressed }}</h2>
+  <form method="post">
+    <input type="submit" name="action" value="Get current playback">
+    <input type="submit" name="action" value="Get devices">
+  </form>
+{% endblock %}

@@ -50,8 +50,11 @@ def get_playback_state(token):
             "Authorization": f"Bearer {token}"
         }
     )
-
-    return request.json()
+    
+    if request.status_code == 200:
+        return request.json()
+    else:
+        return f"Error has status code {request.status_code}. The reason is: {request.reason}"
 
 def refersh_access_token(refresh_token):
     request = post(
@@ -127,7 +130,14 @@ def greet_user(user_id):
 def time():
     return render_template("index.html", utc_dt=(datetime.datetime.now()))
 
-@app.route("/comments")
+@app.route("/comments", methods=["GET", "POST"])
 def comments():
-    return get_playback_state(auth.refresh_token)
+    if request.method == "POST":
+        if request.form["action"] == "Get current playback":
+            return get_playback_state(auth.token)
+        elif request.form["action"] == "Get devices":
+            return redirect("home")
+            
+    
+    return render_template("all_functions.html")
 
