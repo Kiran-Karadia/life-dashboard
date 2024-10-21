@@ -1,15 +1,20 @@
 import base64
 import datetime
-from requests import Request, Response, get, post
-from flask import Flask, request, abort, render_template, redirect
+from requests import Request, Response, get, post, put
+from flask import Flask, request, abort, render_template, redirect, session
 from markupsafe import escape
+import os
+from dotenv import load_dotenv
 
+
+load_dotenv()
 BASE_ENDPOINT = "https://accounts.spotify.com"
-CLIENT_ID = "715ce3e1c15349e189c2d999b7abfa48"
-CLIENT_SECRET = "0d14d2ca2f1e40dfac3c602868e96baa"
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 REDIRECT_URL = "http://localhost:5000/callback"
 BASE_API = "https://api.spotify.com"
 app = Flask(__name__)
+app.secret_key = b"kiran"
 
 def request_user_auth():
     query_params = {
@@ -17,7 +22,8 @@ def request_user_auth():
         "response_type": "code",
         "redirect_uri": REDIRECT_URL,
         "state": "QWERTY",
-        "scope": "user-read-playback-state"
+        "scope": "user-read-playback-state user-modify-playback-state"
+         
     }
     url = Request(
         method="GET",
@@ -43,7 +49,12 @@ def get_token(auth_code):
 
     return request.json()
 
-def get_playback_state(token):
+def get_playback_state():
+    if session["username"] == "Kiran":
+        return "You're not authenticated!"
+    
+    token = session['token']
+    
     request = get(
         url=f"{BASE_API}/v1/me/player",
         headers={
@@ -54,6 +65,39 @@ def get_playback_state(token):
     if request.status_code == 200:
         return request.json()
     else:
+        return f"Error has status code {request.status_code}. The reason is: {request.reason}"
+    
+def start_resume_playback(token):
+    request = put(
+        url=f"{BASE_API}/v1/me/player/play",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "postion_ms": 0
+        }
+    )
+    
+    if request.status_code == 204:
+        return None
+    elif request.status_code == 403:
+        pause_playback(token)
+        return render_template("all_functions.html")
+    else:
+        return f"Error has status code {request.status_code}. The reason is: {request.json()["error"]}"
+    
+def pause_playback(token):
+    request = put(
+        url=f"{BASE_API}/v1/me/player/pause",
+        headers={
+            "Authorization": f"Bearer {token}",
+        }
+    )
+    
+    if request.status_code == 204:
+        return render_template("all_functions.html")
+    else:
+        render_template("all_functions.html")
         return f"Error has status code {request.status_code}. The reason is: {request.reason}"
 
 def refersh_access_token(refresh_token):
@@ -96,7 +140,8 @@ def callback():
 
     auth.set_token(access_token, refresh_token)
     
-
+    session['token'] = access_token
+    session['refresh_token'] = refresh_token
     
     return redirect('home')
 
@@ -108,6 +153,7 @@ def hello():
 
 @app.route("/about")
 def about():
+    session['username'] = "Kiran"
     return redirect(request_user_auth())
 
 @app.route("/capitalise/<word>")
@@ -134,9 +180,9 @@ def time():
 def comments():
     if request.method == "POST":
         if request.form["action"] == "Get current playback":
-            return get_playback_state(auth.token)
+            return get_playback_state()
         elif request.form["action"] == "Get devices":
-            return redirect("home")
+            return start_resume_playback(auth.token)
             
     
     return render_template("all_functions.html")
